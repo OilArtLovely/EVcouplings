@@ -898,7 +898,10 @@ class Alignment:
         """
         self.__ensure_mapped_matrix()
 
-        self.num_cluster_members = num_cluster_members(
+        # self.num_cluster_members = num_cluster_members(
+        #     self.matrix_mapped, identity_threshold
+        # ) change here, use optimized function
+        self.num_cluster_members = num_cluster_members_optimized(
             self.matrix_mapped, identity_threshold
         )
         self.weights = 1.0 / self.num_cluster_members
@@ -1208,5 +1211,46 @@ def num_cluster_members(matrix, identity_threshold):
             if pair_id / L >= identity_threshold:
                 num_neighbors[i] += 1
                 num_neighbors[j] += 1
+
+    return num_neighbors
+
+
+@jit(nopython=True, parallel=True)
+def num_cluster_members_optimized(matrix, identity_threshold):
+    """
+    Calculate number of sequences in alignment
+    within given identity_threshold of each other
+
+    Parameters
+    ----------
+    matrix : np.array
+        N x L matrix containing N sequences of length L.
+        Matrix must be mapped to range(0, num_symbols) using
+        map_matrix function
+    identity_threshold : float
+        Sequences with at least this pairwise identity will be
+        grouped in the same cluster.
+
+    Returns
+    -------
+    np.array
+        Vector of length N containing number of cluster
+        members for each sequence (inverse of sequence
+        weight)
+    """
+    N, L = matrix.shape
+    L = 1.0 * L
+
+    # minimal cluster size is 1 (self)
+    #lock = threading.Thread().Lock()
+    num_neighbors = np.ones((N))
+
+    # compare all pairs of sequences
+    for i in prange(N):
+        pair_num=0
+        for j in prange(N):
+            if np.sum(np.copy(matrix[i,:])==np.copy(matrix[j,:])) / L >= identity_threshold:
+                pair_num+=1
+        num_neighbors[i] = pair_num # one question here: result changes when using num_neighbors[i] = pair_num-1, why??? I think we need to minus 1 to avoid compare one with itself
 
     return num_neighbors

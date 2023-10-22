@@ -898,12 +898,12 @@ class Alignment:
         """
         self.__ensure_mapped_matrix()
 
-        # self.num_cluster_members = num_cluster_members(
-        #     self.matrix_mapped, identity_threshold
-        # ) change here, use optimized function
-        self.num_cluster_members = num_cluster_members_optimized(
+        self.num_cluster_members = num_cluster_members(
             self.matrix_mapped, identity_threshold
-        )
+        ) # change here, use optimized function
+        # self.num_cluster_members = num_cluster_members_optimized(
+        #     self.matrix_mapped, identity_threshold
+        # )
         self.weights = 1.0 / self.num_cluster_members
 
         # reset frequencies, since these were based on

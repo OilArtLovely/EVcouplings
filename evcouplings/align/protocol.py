@@ -1487,7 +1487,7 @@ def standard(**kwargs):
     # jackhmmer; initialize output configuration with
     # results of this search
     jackhmmer_outcfg = jackhmmer_search(**kwargs)
-    stockholm_file = jackhmmer_outcfg["raw_alignment_file"]
+    stockholm_file = "a1.sto" # jackhmmer_outcfg["raw_alignment_file"]
 
     segment = Segment.from_list(jackhmmer_outcfg["segments"][0])
     target_seq_id = segment.sequence_id

@@ -471,6 +471,45 @@ def extract_header_annotation(alignment, from_annotation=True):
     )
 
 
+def extract_header_annotation_option2(header_file, from_annotation=True):
+    columns = [
+        ("GN", "gene"),
+        ("OS", "organism"),
+        ("PE", "existence_evidence"),
+        ("SV", "sequence_version"),
+        ("n", "num_cluster_members"),
+        ("Tax", "taxon"),
+        ("RepID", "representative_member")
+    ]
+
+    col_to_descr = OrderedDict(columns)
+    global regex
+    regex = re.compile("\s({})=".format(
+        "|".join(col_to_descr.keys()))
+    )
+
+    titles = pd.read_table(header_file, header=None)
+    titles[['id', 'description']] = titles[0].str.split(' ', 1, expand=True)
+    titles.drop(0, axis=1, inplace=True)
+
+    def split_description(text):
+        pairs = re.split(regex, text)
+        pairs = ["name"] + pairs
+        feat_map = dict(zip(pairs[::2], pairs[1::2]))
+        res.append(feat_map)
+
+    global res
+    res = []
+
+    titles['description'].apply(split_description)
+    df = pd.DataFrame(res)
+    df.insert(0, 'id', titles['id'])
+    return df.reindex(
+        ["id", "name"] + list(col_to_descr.keys()),
+        axis=1
+    )
+
+
 def describe_seq_identities(alignment, target_seq_index=0):
     """
     Calculate sequence identities of any sequence
@@ -1170,6 +1209,128 @@ def jackhmmer_search(**kwargs):
     return outcfg
 
 
+def diamond_mmseqs2(**kwargs):
+    check_required(
+        kwargs,
+        [
+            "prefix", "sequence_id", "sequence_file",
+            "sequence_download_url", "region", "first_index",
+            "use_bitscores", "domain_threshold", "sequence_threshold",
+            "database", "cpu", "reuse_alignment",
+            "diamond", "mmseqs2"
+            "extract_annotation"
+        ]
+    )
+    prefix = kwargs["prefix"]
+
+    # check if sequence identifier is valid
+    _verify_sequence_id(kwargs["sequence_id"])
+
+    # make sure output directory exists
+    create_prefix_folders(prefix)
+
+    # store search sequence file here
+    target_sequence_file = prefix + ".fa"
+    full_sequence_file = prefix + "_full.fa"
+
+    # make sure search sequence is defined and load it
+    full_seq_file, (full_seq_id, full_seq) = fetch_sequence(
+        kwargs["sequence_id"],
+        kwargs["sequence_file"],
+        kwargs["sequence_download_url"],
+        full_sequence_file
+    )
+
+    # cut sequence to target region and save in sequence_file
+    # (this is the main sequence file used downstream)
+    (region_start, region_end), cut_seq = cut_sequence(
+        full_seq,
+        kwargs["sequence_id"],
+        kwargs["region"],
+        kwargs["first_index"],
+        target_sequence_file
+    )
+
+    # run diamond+mmseqs2 allow to reuse pre-exisiting
+    # Stockholm alignment file here
+    ali_outcfg_file = prefix + ".diamond_mmseqs2_outcfg"
+
+    # determine if to rerun, only possible if previous results
+    # were stored in ali_outcfg_file
+    if kwargs["reuse_alignment"] and valid_file(ali_outcfg_file):
+        ali = read_config_file(ali_outcfg_file)
+
+        # check if the alignment file itself is also there
+        verify_resources(
+            "Tried to reuse alignment, but empty or "
+            "does not exist",
+            ali["alignment"]
+        )
+    else:
+        # otherwise, we have to run the alignment
+        # modify search thresholds
+        # for this option, we only need sequence threshold
+        seq_threshold, domain_threshold = search_thresholds(
+            kwargs["use_bitscores"],
+            kwargs["sequence_threshold"],
+            kwargs["domain_threshold"],
+            len(cut_seq)
+        )
+
+        # run search process
+        # need add later, on the server
+        ali = at.run_diamond_mmseqs2(
+            query=target_sequence_file,
+            database=kwargs[kwargs["database"]],
+            prefix=prefix,
+            use_bitscores=kwargs["use_bitscores"],
+            seq_threshold=seq_threshold,
+            cpu=kwargs["cpu"],
+            binary1=kwargs["diamond"],
+            binary2=kwargs["mmseqs2"]
+        )
+
+        # get rid of huge stdout log file immediately
+        # (do not use /dev/null option of jackhmmer function
+        # to make no assumption about operating system)
+        try:
+            os.remove(ali.output)
+        except OSError:
+            pass
+
+        # turn namedtuple into dictionary to make
+        # restarting code nicer
+        ali = dict(ali._asdict())
+
+        # save results of search for possible restart
+        write_config_file(ali_outcfg_file, ali)
+
+    # prepare output dictionary with result files
+    outcfg = {
+        "sequence_id": kwargs["sequence_id"],
+        "target_sequence_file": target_sequence_file,
+        "sequence_file": full_sequence_file,
+        "first_index": kwargs["first_index"],
+        "focus_mode": True,
+        "raw_alignment_file": ali["alignment"],
+    }
+
+    # define a single protein segment based on target sequence
+    outcfg["segments"] = [
+        Segment(
+            "aa", kwargs["sequence_id"],
+            region_start, region_end,
+            range(region_start, region_end + 1)
+        ).to_list()
+    ]
+
+    outcfg["focus_sequence"] = "{}/{}-{}".format(
+        kwargs["sequence_id"], region_start, region_end
+    )
+
+    return outcfg
+
+
 def hmmbuild_and_search(**kwargs):
     """
     Protocol:
@@ -1487,9 +1648,12 @@ def standard(**kwargs):
     # jackhmmer; initialize output configuration with
     # results of this search
     jackhmmer_outcfg = jackhmmer_search(**kwargs)
+    # diamond_mmseqs2_outcfg = diamond_mmseqs2(**kwargs) # option2: search protein against the database
     stockholm_file = jackhmmer_outcfg["raw_alignment_file"]
+    # stockholm_file = diamond_mmseqs2_outcfg["raw_alignment_file"] # alignment of option2
 
     segment = Segment.from_list(jackhmmer_outcfg["segments"][0])
+    # segment = Segment.from_list(diamond_mmseqs2_outcfg["segments"][0]) # segment of option2
     target_seq_id = segment.sequence_id
     region_start = segment.region_start
     region_end = segment.region_end
@@ -1510,7 +1674,8 @@ def standard(**kwargs):
     # save annotation in sequence headers (species etc.)
     if kwargs["extract_annotation"]:
         annotation_file = prefix + "_annotation.csv"
-        annotation = extract_header_annotation(ali_raw)
+        annotation = extract_header_annotation(ali_raw) # change new annotation function
+        # annotation = extract_header_annotation_option2(diamond_mmseqs2_outcfg["sequence_headers_file"]) # notice: generate one more file including all headers of sequences in diamond + mmseqs2
         annotation.to_csv(annotation_file, index=False)
     else:
         annotation_file = None

@@ -1216,8 +1216,8 @@ def diamond_mmseqs2(**kwargs):
             "prefix", "sequence_id", "sequence_file",
             "sequence_download_url", "region", "first_index",
             "use_bitscores", "domain_threshold", "sequence_threshold",
-            "database", "cpu", "reuse_alignment",
-            "diamond", "mmseqs2"
+            "database_diamond", "database_mmseqs2", "lookup_mmseqs2", "cpu", "reuse_alignment",
+            "diamond", "mmseqs2",
             "extract_annotation"
         ]
     )
@@ -1281,7 +1281,9 @@ def diamond_mmseqs2(**kwargs):
         # need add later, on the server
         ali = at.run_diamond_mmseqs2(
             query=target_sequence_file,
-            database=kwargs[kwargs["database"]],
+            database_diamond=kwargs[kwargs["database_diamond"]],
+            database_mmseqs2=kwargs[kwargs["mmseqs2"]],
+            lookup_mmseqs2=kwargs[kwargs["mmseqs2_lookup"]],
             prefix=prefix,
             use_bitscores=kwargs["use_bitscores"],
             seq_threshold=seq_threshold,
@@ -1289,14 +1291,6 @@ def diamond_mmseqs2(**kwargs):
             binary1=kwargs["diamond"],
             binary2=kwargs["mmseqs2"]
         )
-
-        # get rid of huge stdout log file immediately
-        # (do not use /dev/null option of jackhmmer function
-        # to make no assumption about operating system)
-        try:
-            os.remove(ali.output)
-        except OSError:
-            pass
 
         # turn namedtuple into dictionary to make
         # restarting code nicer
@@ -1647,13 +1641,16 @@ def standard(**kwargs):
     # first step of protocol is to get alignment using
     # jackhmmer; initialize output configuration with
     # results of this search
-    jackhmmer_outcfg = jackhmmer_search(**kwargs)
-    # diamond_mmseqs2_outcfg = diamond_mmseqs2(**kwargs) # option2: search protein against the database
-    stockholm_file = jackhmmer_outcfg["raw_alignment_file"]
-    # stockholm_file = diamond_mmseqs2_outcfg["raw_alignment_file"] # alignment of option2
+    if kwargs["jackhmmer"]:
+        jackhmmer_outcfg = jackhmmer_search(**kwargs)
+        stockholm_file = jackhmmer_outcfg["raw_alignment_file"]
+        segment = Segment.from_list(jackhmmer_outcfg["segments"][0])
 
-    segment = Segment.from_list(jackhmmer_outcfg["segments"][0])
-    # segment = Segment.from_list(diamond_mmseqs2_outcfg["segments"][0]) # segment of option2
+    if kwargs["Diamond"]:
+        diamond_mmseqs2_outcfg = diamond_mmseqs2(**kwargs)  # option2: search protein against the database
+        stockholm_file = diamond_mmseqs2_outcfg["raw_alignment_file"]  # alignment of option2
+        segment = Segment.from_list(diamond_mmseqs2_outcfg["segments"][0])  # segment of option2
+
     target_seq_id = segment.sequence_id
     region_start = segment.region_start
     region_end = segment.region_end
@@ -1674,8 +1671,10 @@ def standard(**kwargs):
     # save annotation in sequence headers (species etc.)
     if kwargs["extract_annotation"]:
         annotation_file = prefix + "_annotation.csv"
-        annotation = extract_header_annotation(ali_raw) # change new annotation function
-        # annotation = extract_header_annotation_option2(diamond_mmseqs2_outcfg["sequence_headers_file"]) # notice: generate one more file including all headers of sequences in diamond + mmseqs2
+        if kwargs["jackhmmer"]:
+            annotation = extract_header_annotation(ali_raw) # change new annotation function
+        if kwargs["Diamond"]:
+            annotation = extract_header_annotation_option2(diamond_mmseqs2_outcfg["sequence_headers_file"]) # notice: generate one more file including all headers of sequences in diamond + mmseqs2
         annotation.to_csv(annotation_file, index=False)
     else:
         annotation_file = None

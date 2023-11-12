@@ -13,6 +13,7 @@ from evcouplings.utils.system import (
     run, create_prefix_folders, verify_resources, temp
 )
 from evcouplings.utils.config import check_required
+import subprocess
 
 
 # output fields for storing results of a hmmbuild run
@@ -365,6 +366,121 @@ def run_jackhmmer(query, database, prefix,
     )
 
     return result
+
+# output fields for storing results of a diamond run
+# (returned by run_diamond_mmseqs2)
+DiamondResult = namedtuple(
+    "DiamondResult",
+    ["prefix", "tsvresult", "alignment"]
+)
+
+
+def run_diamond_mmseqs2(query, database_diamond, database_mmseqs2, lookup_mmseqs2, prefix,
+                        use_bitscores, seq_threshold,
+                        cpu=None,
+                        stdout_redirect=None,
+                        binary_1="diamond", binary_2="mmseqs2"):
+    verify_resources(
+        "Input file does not exist or is empty",
+        query, database_diamond, database_mmseqs2, lookup_mmseqs2
+    )
+
+    create_prefix_folders(prefix)
+
+    # store filenames of all individual results;
+    # these will be returned as result of the
+    # function.
+    result = DiamondResult(
+        prefix,
+        prefix + ".tsv",
+        prefix + ".sto"
+    )
+
+    cmd = [
+        binary_1,
+        "blastp",
+        "-q", query,
+        "-d", database_diamond,
+        "-o", result.tsvresult,
+        "-k0"
+    ]
+
+    # reporting thresholds are set accordingly to
+    # inclusion threshold to reduce memory footprit
+    if use_bitscores:
+        cmd += [
+            "---min-score", str(seq_threshold)
+        ]
+    else:
+        cmd += [
+            "--evalue", str(seq_threshold)
+        ]
+
+    # number of CPUs
+    if cpu is not None:
+        cmd += ["--threads", str(cpu)]
+
+    cmd += ["--outfmt", "6", "qseqid", "sseqid", "bitscore", "pident", "evalue", "qstart", "qend", "qlen", "sstart",
+            "send", "slen", "cigar"]
+
+    return_code, stdout, stderr = run(cmd)
+
+    tmp_tsv = prefix + "_newindex.tsv"
+
+    awk_command = r"awk '{ $6 = $6 - 1; $7 = $7 - 1; $9 = $9 - 1; $10 = $10 - 1; print }'"
+    full_command = f"{awk_command} {result.tsvresult} > {tmp_tsv}"
+    result1 = subprocess.run(full_command, shell=True, check=True)
+
+    tmp_id = prefix + ".newid_1"
+    awk_command = r'''awk 'NR == FNR { f[$2] = $1; next} { line = f[$1]"\t"f[$2]; for(i = 3; i <= NF; i++){ line=line"\t"$i } print line }' '''
+    command = f"{awk_command} {lookup_mmseqs2} {tmp_tsv} > {tmp_id}"
+    result2 = subprocess.run(command, shell=True, check=True, stderr=subprocess.PIPE, text=True)
+
+    cmd_2 = [
+        binary_2,
+        "tsv2db",
+        tmp_id,
+        prefix + "DB",
+        "--output-dbtype", "5"
+    ]
+
+    return_code_2, stdout_2, stderr_2 = run(cmd_2)
+
+    cmd_3 = [
+        binary_2,
+        "createdb",
+        query,
+        prefix + "_queryDB"
+    ]
+
+    return_code_3, stdout_3, stderr_3 = run(cmd_3)
+
+    cmd_4 = [
+        binary_2,
+        "result2msa",
+        prefix + "_queryDB",
+        database_mmseqs2,
+        prefix + "DB",
+        result.alignment,
+        "--msa-format-mode", "4"
+    ]
+
+    if cpu is not None:
+        cmd_4 += ["--threads", str(cpu)]
+
+    return_code_4, stdout_4, stderr_4 = run(cmd_4)
+
+    # also check we actually created some sort of alignment
+    verify_resources(
+        "jackhmmer returned empty alignment: "
+        "stdout={} stderr={} file={}".format(
+            stdout, stderr, result.alignment
+        ),
+        result.alignment
+    )
+
+    return result
+
 
 
 HmmscanResult = namedtuple(

@@ -371,7 +371,7 @@ def run_jackhmmer(query, database, prefix,
 # (returned by run_diamond_mmseqs2)
 DiamondResult = namedtuple(
     "DiamondResult",
-    ["prefix", "tsvresult", "alignment"]
+    ["prefix", "tsvresult", "alignment", "headers"]
 )
 
 
@@ -393,15 +393,18 @@ def run_diamond_mmseqs2(query, database_diamond, database_mmseqs2, lookup_mmseqs
     result = DiamondResult(
         prefix,
         prefix + ".tsv",
-        prefix + ".sto"
+        prefix + ".sto",
+        prefix + "_headers.tsv"
     )
+
+    before_tsv = prefix + "_before.tsv"
 
     cmd = [
         binary_1,
         "blastp",
         "-q", query,
         "-d", database_diamond,
-        "-o", result.tsvresult,
+        "-o", before_tsv,
         "-k0"
     ]
 
@@ -409,7 +412,7 @@ def run_diamond_mmseqs2(query, database_diamond, database_mmseqs2, lookup_mmseqs
     # inclusion threshold to reduce memory footprit
     if use_bitscores:
         cmd += [
-            "---min-score", str(seq_threshold)
+            "--min-score", str(seq_threshold)
         ]
     else:
         cmd += [
@@ -421,20 +424,28 @@ def run_diamond_mmseqs2(query, database_diamond, database_mmseqs2, lookup_mmseqs
         cmd += ["--threads", str(cpu)]
 
     cmd += ["--outfmt", "6", "qseqid", "sseqid", "bitscore", "pident", "evalue", "qstart", "qend", "qlen", "sstart",
-            "send", "slen", "cigar"]
+            "send", "slen", "cigar", "salltitles"]
 
     return_code, stdout, stderr = run(cmd)
+
+    awk_command = r"awk -F'\t' '{print $NF}'"
+    full_command = f"{awk_command} {before_tsv} > {result.headers}"
+    result1 = subprocess.run(full_command, shell=True, check=True)
+
+    awk_command = r"awk -F'\t' 'NF{NF--}1'"
+    full_command = f"{awk_command} {before_tsv} > {result.tsvresult}"
+    result2 = subprocess.run(full_command, shell=True, check=True)
 
     tmp_tsv = prefix + "_newindex.tsv"
 
     awk_command = r"awk '{ $6 = $6 - 1; $7 = $7 - 1; $9 = $9 - 1; $10 = $10 - 1; print }'"
     full_command = f"{awk_command} {result.tsvresult} > {tmp_tsv}"
-    result1 = subprocess.run(full_command, shell=True, check=True)
+    result3 = subprocess.run(full_command, shell=True, check=True)
 
     tmp_id = prefix + ".newid_1"
     awk_command = r'''awk 'NR == FNR { f[$2] = $1; next} { line = f[$1]"\t"f[$2]; for(i = 3; i <= NF; i++){ line=line"\t"$i } print line }' '''
     command = f"{awk_command} {lookup_mmseqs2} {tmp_tsv} > {tmp_id}"
-    result2 = subprocess.run(command, shell=True, check=True, stderr=subprocess.PIPE, text=True)
+    result4 = subprocess.run(command, shell=True, check=True, stderr=subprocess.PIPE, text=True)
 
     cmd_2 = [
         binary_2,

@@ -11,7 +11,7 @@ from collections import namedtuple, OrderedDict, defaultdict
 from copy import deepcopy
 
 import numpy as np
-from numba import jit
+from numba import jit, prange
 
 from evcouplings.utils.calculations import entropy
 from evcouplings.utils.helpers import DefaultOrderedDict, wrap

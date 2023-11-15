@@ -489,7 +489,7 @@ def extract_header_annotation_option2(header_file, from_annotation=True):
     )
 
     titles = pd.read_table(header_file, header=None)
-    titles[['id', 'description']] = titles[0].str.split(' ', 1, expand=True)
+    titles[['id', 'description']] = titles[0].str.split(n=1, expand=True)
     titles.drop(0, axis=1, inplace=True)
 
     def split_description(text):
@@ -1281,15 +1281,15 @@ def diamond_mmseqs2(**kwargs):
         # need add later, on the server
         ali = at.run_diamond_mmseqs2(
             query=target_sequence_file,
-            database_diamond=kwargs[kwargs["database_diamond"]],
-            database_mmseqs2=kwargs[kwargs["mmseqs2"]],
-            lookup_mmseqs2=kwargs[kwargs["mmseqs2_lookup"]],
+            database_diamond=kwargs["database_diamond"],
+            database_mmseqs2=kwargs["database_mmseqs2"],
+            lookup_mmseqs2=kwargs["lookup_mmseqs2"],
             prefix=prefix,
             use_bitscores=kwargs["use_bitscores"],
             seq_threshold=seq_threshold,
             cpu=kwargs["cpu"],
-            binary1=kwargs["diamond"],
-            binary2=kwargs["mmseqs2"]
+            binary_1=kwargs["diamond"],
+            binary_2=kwargs["mmseqs2"]
         )
 
         # turn namedtuple into dictionary to make
@@ -1307,6 +1307,7 @@ def diamond_mmseqs2(**kwargs):
         "first_index": kwargs["first_index"],
         "focus_mode": True,
         "raw_alignment_file": ali["alignment"],
+        "sequence_headers_file": ali["headers"],
     }
 
     # define a single protein segment based on target sequence
@@ -1689,10 +1690,16 @@ def standard(**kwargs):
     )
 
     #  merge results of jackhmmer_search and modify_alignment stage
-    outcfg = {
+    if kwargs["jackhmmer"]:
+        outcfg = {
         **jackhmmer_outcfg,
         **mod_outcfg,
-    }
+        }
+    if kwargs["Diamond"]:
+        outcfg = {
+        **diamond_mmseqs2_outcfg,
+        **mod_outcfg,
+        }
 
     if annotation_file is not None:
         outcfg["annotation_file"] = annotation_file

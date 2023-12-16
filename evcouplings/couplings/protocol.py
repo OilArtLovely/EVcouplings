@@ -512,14 +512,19 @@ def complex(**kwargs):
         [
             "prefix", "min_sequence_distance",
             "scoring_model", "use_all_ecs_for_scoring",
+            "first_focus_sequence", # change here
         ]
     )
 
     prefix = kwargs["prefix"]
 
+    # change here: compute length of protein 1
+    region_p1 = kwargs["first_focus_sequence"].split("/")[1]
+    length_p1 = int(region_p1.split("-")[1]) - int(region_p1.split("-")[0]) + 1
+
     # infer ECs and load them
     outcfg, ecs, segments = infer_plmc(**kwargs)
-    model = CouplingsModel(outcfg["model_file"])
+    model = CouplingsModel(outcfg["model_file"],length_protein1=length_p1)
 
     # following computations are mostly specific to complex pipeline
 

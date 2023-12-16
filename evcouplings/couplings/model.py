@@ -239,7 +239,7 @@ class CouplingsModel:
     and compute evolutionary couplings, sequence statistical energies, etc.
     """
 
-    def __init__(self, model_file, precision="float32", file_format="plmc_v2", **kwargs):
+    def __init__(self, model_file, length_protein1, precision="float32", file_format="plmc_v2", **kwargs):
         """
         Initializes the object with raw values read from binary .Jij file
 
@@ -261,6 +261,8 @@ class CouplingsModel:
             the missing values (e.g. regularization strength, alphabet or M_eff)
             manually via the respective member variables/properties.
         """
+        self.p1L = length_protein1
+
         is_file_obj = hasattr(model_file, "read")
 
         if file_format == "plmc_v2":
@@ -372,16 +374,16 @@ class CouplingsModel:
         # TODO: could read triangle matrix from file in one block
         # like in read_params.m, which would result in faster reading
         # but also 50% higher memory usage... for now save memory
-        for i in range(self.L - 1):
-            for j in range(i + 1, self.L):
+        for i in range(self.p1L): # remove intras
+            for j in range(self.p1L, self.L): # remove intras
                 self.f_ij[i, j], = np.fromfile(
                     f, dtype=(precision, (self.num_symbols, self.num_symbols)),
                     count=1
                 )
                 self.f_ij[j, i] = self.f_ij[i, j].T
 
-        for i in range(self.L - 1):
-            for j in range(i + 1, self.L):
+        for i in range(self.p1L): # remove intras
+            for j in range(self.p1L, self.L): # remove intras
                 self.J_ij[i, j], = np.fromfile(
                     f, dtype=(precision, (self.num_symbols, self.num_symbols)),
                     count=1
@@ -489,8 +491,8 @@ class CouplingsModel:
             (self.L, self.L, self.num_symbols, self.num_symbols)
         )
 
-        for i in range(self.L - 1):
-            for j in range(i + 1, self.L):
+        for i in range(self.p1L): # remove intras
+            for j in range(self.p1L, self.L): # remove
                 file_i, file_j = np.fromfile(f, "int32", 2)
 
                 if i + 1 != file_i or j + 1 != file_j:
@@ -725,8 +727,8 @@ class CouplingsModel:
             )
 
             seq = self.target_seq_mapped
-            for i in range(self.L - 1):
-                for j in range(i + 1, self.L):
+            for i in range(self.p1L): # remove intras
+                for j in range(self.p1L, self.L): # remove intras
                     self._double_mut_mat[i, j] = (
                         np.tile(self.single_mut_mat[i], (self.num_symbols, 1)).T +
                         np.tile(self.single_mut_mat[j], (self.num_symbols, 1)) +
@@ -787,8 +789,8 @@ class CouplingsModel:
         # transform couplings into zero-sum gauge
         J_ij_0 = _zero_sum_gauge(self.J_ij)
 
-        for i in range(self.L - 1):
-            for j in range(i + 1, self.L):
+        for i in range(self.p1L): # remove intras
+            for j in range(self.p1L, self.L): # remove intras
                 self._fn_scores[i, j] = np.linalg.norm(J_ij_0[i, j], "fro")
                 self._fn_scores[j, i] = self._fn_scores[i, j]
 
@@ -805,8 +807,8 @@ class CouplingsModel:
 
         # create internal dataframe representation
         ecs = []
-        for i in range(self.L - 1):
-            for j in range(i + 1, self.L):
+        for i in range(self.p1L): # remove intras
+            for j in range(self.p1L, self.L): # remove intras
                 # if we have custom indeces, cannot compute sequence distance
                 # easily, unless we use segment information
                 try:
@@ -1237,17 +1239,17 @@ class CouplingsModel:
             self.h_i.astype(precision).tofile(f)
 
             if not new:
-                for i in range(self.L - 1):
-                    for j in range(i + 1, self.L):
+                for i in range(self.p1L): # remove intras
+                    for j in range(self.p1L, self.L): # remove intras
                         np.array([i + 1, j + 1], dtype="int32").tofile(f)
                         self.f_ij[i, j].astype(precision).tofile(f)
                         self.J_ij[i, j].astype(precision).tofile(f)
             else:
-                for i in range(self.L - 1):
-                    for j in range(i + 1, self.L):
+                for i in range(self.p1L): # remove intras
+                    for j in range(self.p1L, self.L): # remove intras
                         self.f_ij[i, j].astype(precision).tofile(f)
 
-                for i in range(self.L - 1):
-                    for j in range(i + 1, self.L):
+                for i in range(self.p1L): # remove intras
+                    for j in range(self.p1L, self.L): # remove intras
                         self.J_ij[i, j].astype(precision).tofile(f)
 

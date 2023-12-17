@@ -256,7 +256,7 @@ def run_plmc(alignment, couplings_file, param_file=None,
         cmd += ["-lg", str(lambda_g)]
 
     if len_p1 is not None:
-        cmd += ["-Lp1", int(len_p1)]
+        cmd += ["-Lp1", str(len_p1)]
 
     # Number of cores to use for calculation
     if cpu is not None:

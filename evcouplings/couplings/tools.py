@@ -127,6 +127,7 @@ def run_plmc(alignment, couplings_file, param_file=None,
              focus_seq=None, alphabet=None, theta=None,
              scale=None, ignore_gaps=False, iterations=None,
              lambda_h=None, lambda_J=None, lambda_g=None,
+             len_p1=None, # change: add one parameter
              cpu=None, binary="plmc"):
     """
     Run plmc on sequence alignment and store
@@ -253,6 +254,9 @@ def run_plmc(alignment, couplings_file, param_file=None,
     # Group L1 regularization weight for pair couplings
     if lambda_g is not None:
         cmd += ["-lg", str(lambda_g)]
+
+    if len_p1 is not None:
+        cmd += ["-Lp1", int(len_p1)]
 
     # Number of cores to use for calculation
     if cpu is not None:

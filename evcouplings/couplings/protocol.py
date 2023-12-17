@@ -53,7 +53,7 @@ SCORING_MODELS = (
 )
 
 
-def infer_plmc(**kwargs):
+def infer_plmc(lenth_protein1,**kwargs): # change: add one parameter
     """
     Run EC computation on alignment. This function contains
     the functionality shared between monomer and complex EC
@@ -213,6 +213,7 @@ def infer_plmc(**kwargs):
             lambda_h=kwargs["lambda_h"],
             lambda_J=lambda_J,
             lambda_g=kwargs["lambda_group"],
+            len_p1=lenth_protein1, # change: add new parameter here
             cpu=kwargs["cpu"],
             binary=kwargs["plmc"],
         )
@@ -523,7 +524,7 @@ def complex(**kwargs):
     length_p1 = int(region_p1.split("-")[1]) - int(region_p1.split("-")[0]) + 1
 
     # infer ECs and load them
-    outcfg, ecs, segments = infer_plmc(**kwargs)
+    outcfg, ecs, segments = infer_plmc(lenth_protein1=length_p1,**kwargs) # change: add one parameter
     model = CouplingsModel(outcfg["model_file"],length_protein1=length_p1)
 
     # following computations are mostly specific to complex pipeline
